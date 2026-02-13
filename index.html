@@ -1,0 +1,645 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cluck & Run - Voice Controlled</title>
+    <style>
+        :root {
+            --bg-color: #1a1a2e;
+            --accent-color: #0f3460;
+            --player-color: #00d4ff;
+            --obstacle-color: #e94560;
+            --text-color: #ffffff;
+            --glow: 0 0 10px rgba(0, 212, 255, 0.7);
+            --font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            font-family: var(--font-family);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            user-select: none;
+        }
+
+        #game-container {
+            position: relative;
+            width: 800px;
+            height: 400px;
+            background: linear-gradient(180deg, #16213e 0%, #1a1a2e 100%);
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            overflow: hidden;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+
+        /* HUD */
+        .hud {
+            display: flex;
+            justify-content: space-between;
+            font-size: 1.2rem;
+            font-weight: bold;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+            opacity: 0;
+            /* Hidden initially */
+            transition: opacity 0.5s;
+        }
+
+        .volume-meter {
+            width: 150px;
+            height: 10px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 5px;
+            margin-top: 10px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .volume-bar {
+            height: 100%;
+            width: 0%;
+            background: var(--player-color);
+            box-shadow: var(--glow);
+            transition: width 0.05s linear;
+        }
+
+        /* SCREENS */
+        .screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background: rgba(26, 26, 46, 0.85);
+            backdrop-filter: blur(5px);
+            z-index: 10;
+            pointer-events: auto;
+            transition: opacity 0.3s;
+        }
+
+        .hidden {
+            opacity: 0;
+            pointer-events: none;
+            display: none;
+            /* simpler hiding */
+        }
+
+        h1 {
+            font-size: 3rem;
+            margin-bottom: 0.5rem;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            background: linear-gradient(45deg, #00d4ff, #e94560);
+            background-clip: text;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-shadow: 0 0 20px rgba(0, 212, 255, 0.3);
+        }
+
+        p {
+            font-size: 1.2rem;
+            margin-bottom: 2rem;
+            opacity: 0.8;
+        }
+
+        button {
+            background: var(--player-color);
+            color: #1a1a2e;
+            border: none;
+            padding: 12px 32px;
+            font-size: 1.2rem;
+            font-weight: bold;
+            border-radius: 30px;
+            cursor: pointer;
+            box-shadow: 0 0 15px rgba(0, 212, 255, 0.5);
+            transition: transform 0.2s, box-shadow 0.2s;
+            text-transform: uppercase;
+        }
+
+        button:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 25px rgba(0, 212, 255, 0.8);
+        }
+
+        button:active {
+            transform: scale(0.95);
+        }
+
+        .hint {
+            font-size: 0.9rem;
+            margin-top: 20px;
+            color: rgba(255, 255, 255, 0.5);
+        }
+
+        /* Responsive */
+        @media (max-width: 600px) {
+            #game-container {
+                width: 100vw;
+                height: 100vh;
+                border-radius: 0;
+            }
+
+            h1 {
+                font-size: 2.5rem;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="game-container">
+        <canvas id="gameCanvas" width="800" height="400"></canvas>
+
+        <!-- HUD Layer -->
+        <div id="ui-layer">
+            <div class="hud" id="game-hud">
+                <div>SCORE: <span id="score-display">0</span></div>
+                <div style="text-align: right;">
+                    <div>HIGH SCORE: <span id="high-score-display">0</span></div>
+                    <div class="volume-meter">
+                        <div class="volume-bar" id="volume-indicator"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Start Screen -->
+        <div id="start-screen" class="screen">
+            <h1>Cluck & Run</h1>
+            <p>Make noise (Clap, Shout) to Jump!</p>
+            <button id="start-btn">Start Game</button>
+            <div class="hint">Microphone permission required</div>
+        </div>
+
+        <!-- Game Over Screen -->
+        <div id="game-over-screen" class="screen hidden">
+            <h1>Game Over</h1>
+            <p>Score: <span id="final-score">0</span></p>
+            <button id="restart-btn">Try Again</button>
+        </div>
+    </div>
+
+    <script>
+        // --- CONFIGURATION ---
+        const CONF = {
+            gravity: 0.6,
+            jumpForce: 12,
+            groundY: 350,
+            playerX: 100,
+            moveSpeed: 5,
+            maxSpeed: 12,
+            speedInc: 0.001,
+            volumeThreshold: 0.15,  // Sensitivity threshold
+            volumeSensitivity: 3.0, // Multiplier for jump height modulation (if used)
+            colors: {
+                player: '#00d4ff',
+                obstacle: '#e94560',
+                ground: '#0f3460',
+                particles: ['#00d4ff', '#ffffff', '#e94560']
+            }
+        };
+
+        // --- AUDIO SYSTEM ---
+        class AudioController {
+            constructor() {
+                this.audioContext = null;
+                this.analyser = null;
+                this.dataArray = null;
+                this.microphone = null;
+                this.volume = 0;
+                this.isReady = false;
+            }
+
+            async init() {
+                try {
+                    this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+
+                    this.analyser = this.audioContext.createAnalyser();
+                    this.analyser.fftSize = 256;
+                    this.analyser.smoothingTimeConstant = 0.5; // Smooth out jitter
+
+                    this.microphone = this.audioContext.createMediaStreamSource(stream);
+                    this.microphone.connect(this.analyser);
+
+                    this.dataArray = new Uint8Array(this.analyser.frequencyBinCount);
+                    this.isReady = true;
+                    return true;
+                } catch (err) {
+                    console.error("Microphone access denied or error:", err);
+                    alert("Microphone access is required to play!");
+                    return false;
+                }
+            }
+
+            update() {
+                if (!this.isReady) return 0;
+
+                this.analyser.getByteTimeDomainData(this.dataArray);
+
+                // Calculate RMS (Root Mean Square)
+                let sum = 0;
+                for (let i = 0; i < this.dataArray.length; i++) {
+                    const x = (this.dataArray[i] - 128) / 128.0; // Normalize
+                    sum += x * x;
+                }
+                this.volume = Math.sqrt(sum / this.dataArray.length);
+                return this.volume;
+            }
+        }
+
+        // --- GAME CLASSES ---
+
+        class Player {
+            constructor(ctx) {
+                this.ctx = ctx;
+                this.width = 40;
+                this.height = 40;
+                this.x = CONF.playerX;
+                this.y = CONF.groundY - this.height;
+                this.vy = 0;
+                this.isGrounded = true;
+                this.color = CONF.colors.player;
+                this.jumpTimer = 0; // Cooldown/buffer
+            }
+
+            jump(intensity) {
+                if (this.isGrounded) {
+                    // Fixed jump force for better gameplay feel, triggered by threshold
+                    this.vy = -CONF.jumpForce;
+                    this.isGrounded = false;
+                    createParticles(this.x + this.width / 2, this.y + this.height, 10);
+                }
+            }
+
+            update() {
+                // Apply gravity
+                this.vy += CONF.gravity;
+                this.y += this.vy;
+
+                // Ground collision
+                if (this.y + this.height >= CONF.groundY) {
+                    this.y = CONF.groundY - this.height;
+                    this.vy = 0;
+                    this.isGrounded = true;
+                }
+            }
+
+            draw() {
+                this.ctx.shadowBlur = 15;
+                this.ctx.shadowColor = this.color;
+                this.ctx.fillStyle = this.color;
+
+                // Simple squash and stretch effect
+                let stretch = 0;
+                if (!this.isGrounded) stretch = Math.sign(this.vy) * 5;
+
+                this.ctx.fillRect(this.x, this.y - stretch, this.width, this.height + stretch);
+
+                // Reset shadow
+                this.ctx.shadowBlur = 0;
+            }
+        }
+
+        class Obstacle {
+            constructor(ctx, speed) {
+                this.ctx = ctx;
+                this.speed = speed;
+                this.markedForDeletion = false;
+                this.x = 800 + Math.random() * 200;
+
+                // Types: 'ground', 'flying', 'glider', 'spinner', 'pulser'
+                const rand = Math.random();
+                if (rand < 0.4) this.type = 'ground';
+                else if (rand < 0.6) this.type = 'flying';
+                else if (rand < 0.75) this.type = 'glider';
+                else if (rand < 0.9) this.type = 'spinner';
+                else this.type = 'pulser';
+
+                // Dimensions & Position based on type
+                if (this.type === 'ground') {
+                    this.width = 30 + Math.random() * 30;
+                    this.height = 40 + Math.random() * 40;
+                    this.y = CONF.groundY - this.height;
+                    this.color = CONF.colors.obstacle;
+                } else if (this.type === 'flying') {
+                    this.width = 40;
+                    this.height = 20;
+                    this.y = CONF.groundY - 100 - Math.random() * 60;
+                    this.color = '#ff9900'; // Orange
+                } else if (this.type === 'glider') {
+                    this.width = 30;
+                    this.height = 30;
+                    this.baseY = CONF.groundY - 100 - Math.random() * 50;
+                    this.y = this.baseY;
+                    this.angle = 0;
+                    this.color = '#ccff00'; // Lime
+                } else if (this.type === 'spinner') {
+                    this.width = 35;
+                    this.height = 35;
+                    this.y = CONF.groundY - 35 - Math.random() * 80;
+                    this.angle = 0;
+                    this.color = '#ff0055'; // Red/Pink
+                } else if (this.type === 'pulser') {
+                    this.baseWidth = 30;
+                    this.baseHeight = 30;
+                    this.width = 30;
+                    this.height = 30;
+                    this.y = CONF.groundY - 30 - Math.random() * 50;
+                    this.angle = 0;
+                    this.color = '#aa00ff'; // Purple
+                }
+            }
+
+            update(gameSpeed) {
+                this.x -= gameSpeed;
+
+                // Behavior
+                if (this.type === 'glider') {
+                    this.angle += 0.05;
+                    this.y = this.baseY + Math.sin(this.angle) * 30;
+                } else if (this.type === 'spinner') {
+                    this.angle += 0.1;
+                    // Spinners might also move slightly vertical to be mean? Nah, just spin.
+                } else if (this.type === 'pulser') {
+                    this.angle += 0.1;
+                    const scale = 1 + Math.sin(this.angle) * 0.3;
+                    this.width = this.baseWidth * scale;
+                    this.height = this.baseHeight * scale;
+                    // Re-center based on size change
+                    // this.y = ... logic if we want it to grow from center, but top-left growth is simpler collision-wise for now or we adjust draw
+                }
+
+                if (this.x + this.width < 0) this.markedForDeletion = true;
+            }
+
+            draw() {
+                this.ctx.shadowBlur = 10;
+                this.ctx.shadowColor = this.color;
+                this.ctx.fillStyle = this.color;
+
+                if (this.type === 'spinner') {
+                    this.ctx.save();
+                    this.ctx.translate(this.x + this.width / 2, this.y + this.height / 2);
+                    this.ctx.rotate(this.angle);
+                    this.ctx.fillRect(-this.width / 2, -this.height / 2, this.width, this.height);
+                    this.ctx.restore();
+                } else {
+                    this.ctx.fillRect(this.x, this.y, this.width, this.height);
+                }
+
+                this.ctx.shadowBlur = 0;
+            }
+        }
+
+        class Particle {
+            constructor(ctx, x, y) {
+                this.ctx = ctx;
+                this.x = x;
+                this.y = y;
+                this.size = Math.random() * 5 + 2;
+                this.speedX = Math.random() * 4 - 2;
+                this.speedY = Math.random() * 4 - 2;
+                this.color = CONF.colors.particles[Math.floor(Math.random() * CONF.colors.particles.length)];
+                this.life = 1.0;
+            }
+
+            update() {
+                this.x += this.speedX;
+                this.y += this.speedY;
+                this.size *= 0.95;
+                this.life -= 0.05;
+            }
+
+            draw() {
+                this.ctx.globalAlpha = this.life;
+                this.ctx.fillStyle = this.color;
+                this.ctx.beginPath();
+                this.ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                this.ctx.fill();
+                this.ctx.globalAlpha = 1.0;
+            }
+        }
+
+        // --- GAME STATE ---
+
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // UI Elements
+        const startScreen = document.getElementById('start-screen');
+        const gameOverScreen = document.getElementById('game-over-screen');
+        const hud = document.getElementById('game-hud');
+        const scoreDisplay = document.getElementById('score-display');
+        const finalScoreDisplay = document.getElementById('final-score');
+        const highScoreDisplay = document.getElementById('high-score-display');
+        const volumeIndicator = document.getElementById('volume-indicator');
+
+        let audioController = new AudioController();
+        let player;
+        let obstacles = [];
+        let particles = [];
+        let score = 0;
+        let gameSpeed = CONF.moveSpeed;
+        let animationId;
+        let lastTime = 0;
+        let obstacleTimer = 0;
+        let obstacleInterval = 2000;
+        let gameState = 'MENU'; // MENU, PLAYING, GAMEOVER
+        let highScore = localStorage.getItem('cluckRunHighScore') || 0;
+
+        highScoreDisplay.innerText = highScore;
+
+        function createParticles(x, y, count) {
+            for (let i = 0; i < count; i++) {
+                particles.push(new Particle(ctx, x, y));
+            }
+        }
+
+        function resetGame() {
+            player = new Player(ctx);
+            obstacles = [];
+            particles = [];
+            score = 0;
+            gameSpeed = CONF.moveSpeed;
+            obstacleInterval = 2000;
+            scoreDisplay.innerText = '0';
+            volumeIndicator.style.width = '0%';
+        }
+
+        function init() {
+            // Event Listeners
+            document.getElementById('start-btn').addEventListener('click', startGame);
+            document.getElementById('restart-btn').addEventListener('click', () => {
+                gameOverScreen.classList.add('hidden');
+                startGame();
+            });
+
+            // Resize handling
+            window.addEventListener('resize', resizeCanvas);
+            resizeCanvas();
+        }
+
+        function resizeCanvas() {
+            // Keep internal resolution but scale with CSS if needed
+            // For now hardcoded 800x400 in canvas tag to match logic
+        }
+
+        async function startGame() {
+            if (!audioController.isReady) {
+                const success = await audioController.init();
+                if (!success) return;
+            }
+
+            resetGame();
+            gameState = 'PLAYING';
+            startScreen.classList.add('hidden');
+            hud.style.opacity = '1';
+            lastTime = 0;
+            animate(0);
+        }
+
+        function gameOver() {
+            gameState = 'GAMEOVER';
+            cancelAnimationFrame(animationId);
+
+            // Update High Score
+            if (score > highScore) {
+                highScore = score;
+                localStorage.setItem('cluckRunHighScore', highScore);
+                highScoreDisplay.innerText = highScore;
+            }
+
+            finalScoreDisplay.innerText = Math.floor(score);
+            gameOverScreen.classList.remove('hidden');
+            hud.style.opacity = '0';
+        }
+
+        function animate(timestamp) {
+            if (gameState !== 'PLAYING') return;
+
+            const deltaTime = timestamp - lastTime;
+            lastTime = timestamp;
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // --- 1. Audio Processing ---
+            const vol = audioController.update();
+
+            // Visual indicator
+            const volPercent = Math.min(vol * 300, 100); // Scale for display
+            volumeIndicator.style.width = `${volPercent}%`;
+
+            // Jump Trigger
+            if (vol > CONF.volumeThreshold) {
+                player.jump();
+            }
+
+            // --- 2. Update Game Objects ---
+
+            // Player
+            player.update();
+            player.draw();
+
+            // Particles
+            particles.forEach((p, index) => {
+                p.update();
+                p.draw();
+                if (p.life <= 0) particles.splice(index, 1);
+            });
+
+            // Obstacles
+            if (timestamp - obstacleTimer > obstacleInterval) {
+                obstacles.push(new Obstacle(ctx, gameSpeed));
+                obstacleTimer = timestamp;
+                // Decrease interval slightly to make it harder
+                obstacleInterval = Math.max(800, 2000 - gameSpeed * 50);
+            }
+
+            obstacles.forEach((obs, index) => {
+                obs.update(gameSpeed);
+                obs.draw();
+
+                // Collision
+                // Simple AABB collision
+                if (
+                    player.x < obs.x + obs.width &&
+                    player.x + player.width > obs.x &&
+                    player.y < obs.y + obs.height &&
+                    player.y + player.height > obs.y
+                ) {
+                    // Shrink hit box slightly for forgiveness
+                    const buffer = 5;
+                    if (
+                        player.x + buffer < obs.x + obs.width - buffer &&
+                        player.x + player.width - buffer > obs.x + buffer &&
+                        player.y + buffer < obs.y + obs.height - buffer &&
+                        player.y + player.height - buffer > obs.y + buffer
+                    ) {
+                        gameOver();
+                    }
+                }
+
+                if (obs.markedForDeletion) {
+                    obstacles.splice(index, 1);
+                    score += 10;
+                    scoreDisplay.innerText = score;
+                }
+            });
+
+            // --- 3. Difficulty Scaling ---
+            if (gameSpeed < CONF.maxSpeed) {
+                gameSpeed += CONF.speedInc;
+            }
+
+            // --- 4. Draw Ground ---
+            ctx.fillStyle = CONF.colors.ground;
+            ctx.fillRect(0, CONF.groundY, canvas.width, canvas.height - CONF.groundY);
+
+            // Ground highlight/neon line
+            ctx.fillStyle = '#1e4878';
+            ctx.fillRect(0, CONF.groundY, canvas.width, 4);
+
+            animationId = requestAnimationFrame(animate);
+        }
+
+        // Run
+        init();
+
+    </script>
+</body>
+
+</html>
